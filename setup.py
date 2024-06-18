@@ -21,7 +21,17 @@ def cd(d):
     print(f"Into {d}")
     os.chdir(d)
 
-root = "/data/software/grpc"
+def rm_if_exist(d):
+    if os.path.exists(d):
+        echo_run(f"rm -r {d}")
+
+def repo_name(url):
+    return url.split('/')[-1]
+
+git_url = "https://github.com/grpc/grpc"
+software = repo_name(git_url)
+root = f"/data/software/{software}"
+module_path = f"/usr/share/modules/modulefiles/{software}"
 version = sys.argv[1]
 
 log_file = os.path.join(root, "log.txt")
@@ -36,38 +46,39 @@ for d in dirs:
 
 # pkg_list = os.listdir(pkg)
 # pkg_tail = ".tar.xz"
-module_path = "/usr/share/modules/modulefiles/grpc"
 if not os.path.exists(module_path):
     echo_run(f"mkdir -p {module_path}")
 
-def install(ver):
+def install_pkg(ver):
     cd(src)
-    echo_run(f"git clone -b {ver} --depth 1 https://github.com/grpc/grpc")
-    old_src_path = os.path.join(src, "grpc")
-    src_name = f"grpc-{ver}"
+    old_src_path = os.path.join(src, software)
+    src_name = f"{software}-{ver}"
     src_path = os.path.join(src, src_name)
+    rm_if_exist(src_path)
+    rm_if_exist(old_src_path)
+    echo_run(f"git clone -b {ver} --depth 1 {git_url}")
     echo_run(f"mv {old_src_path} {src_path}")
     cd(src_path)
-    echo_run(f"git submodule update --init --depth 1")
+    echo_run(f"git submodule update --init --depth 1 -j {os.cpu_count()}")
 
     build_path = os.path.join(build, src_name)
     install_path = os.path.join(install, src_name)
-    if os.path.exists(build_path):
-        echo_run(f"rm -r {build_path}")
+    rm_if_exist(build_path)
 
-    echo_run(f"cmake -S {src_path} -B {build_path} --install-prefix {install_path}")
+    # use CMAKE_INSTALL_PREFIX instead of --install-prefix to be compatible with old cmake
+    echo_run(f"cmake -DCMAKE_INSTALL_PREFIX={install_path} -S {src_path} -B {build_path}") 
     cd(build_path)
 
     echo_run(f"make -j {os.cpu_count()} install")
 
-    module_file = os.path.join(module_path, pkg_file[:-len(pkg_tail)])
+    module_file = os.path.join(module_path, ver)
+    print(f"Installing modulefile: {module_file}")
     with open(module_file, "w") as f:
         bin_path = os.path.join(install_path, "bin")
         include_path = os.path.join(install_path, "include")
         lib_path = os.path.join(install_path, "lib")
         pkgconfig_path = os.path.join(lib_path, "pkgconfig")
         cmake_path = os.path.join(lib_path, "cmake")
-        print(pkgconfig_path)
-        f.write(f"#%Module1.0\nconflict dpdk\nprepend-path PATH {bin_path}\nprepend-path CPATH {include_path}\nprepend-path LD_LIBRARY_PATH {lib_path}\nprepend-path PKG_CONFIG_PATH {pkgconfig_path}\nprepend-path CMAKE_PREFIX_PATH {install_path}\nprepend-path CMAKE_MODULE_PATH {cmake_path}")
+        f.write(f"#%Module1.0\nconflict {software}\nprepend-path PATH {bin_path}\nprepend-path CPATH {include_path}\nprepend-path LD_LIBRARY_PATH {lib_path}\nprepend-path PKG_CONFIG_PATH {pkgconfig_path}\nprepend-path CMAKE_PREFIX_PATH {install_path}\nprepend-path CMAKE_MODULE_PATH {cmake_path}")
 
-install(version)
+install_pkg(version)
