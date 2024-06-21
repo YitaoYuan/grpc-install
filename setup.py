@@ -71,6 +71,17 @@ def install_pkg(ver):
 
     echo_run(f"make -j {os.cpu_count()} install")
 
+    re2pc_src = os.path.join(src_path, "third_party", "re2", "re2.pc")
+    re2pc_dst_dir = os.path.join(install_path, "lib", "pkgconfig")
+    re2pc_dst = os.path.join(re2pc_dst_dir, "re2.pc")
+    lines = []
+    with open(re2pc_src, "r") as f:
+        lines = f.readlines()
+    lines = [f"prefix={install_path}\n", "includedir=${prefix}/include\n", "libdir=${prefix}/lib\n"] + lines[2:]
+    with open(re2pc_dst, "w") as f:
+        f.writelines(lines)
+    print(f"Generating {re2pc_dst}")
+
     module_file = os.path.join(module_path, ver)
     print(f"Installing modulefile: {module_file}")
     with open(module_file, "w") as f:
